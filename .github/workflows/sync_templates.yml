@@ -1,0 +1,58 @@
+name: Mock Sync Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+        - '**'
+    paths:
+        - 'html-templates/lyft/**/*.html'
+
+jobs:
+  sync-templates:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout comms-service repo
+      uses: actions/checkout@v3
+      with:
+        path: source_repo
+
+    - name: Set up workspace
+      run: mkdir -p source_repo/build/templates/lyft/
+
+    - name: Convert .html to .j2
+      working-directory: source_repo
+      run: |
+        ROOT_DIR=$(pwd)
+        cd html-templates/lyft
+        find . -type f -name "*.html" | while read filename; do base_name="${filename%.html}"
+        mkdir -p "$ROOT_DIR/build/templates/lyft/$(dirname "$filename")"
+        cp "$filename" "$ROOT_DIR/build/templates/lyft/$base_name.j2"
+        echo "converted:$filename"
+        done
+
+    - name: Sync .j2 files
+      run: |
+        echo "contents of build folder"
+        ls -R source_repo/templates/lyft/
+        mkdir -p source_repo/templates/lyft/
+        # -r recursive copy keeps folder tree
+        # -u update only if newer
+        cp -r source_repo/build/templates/lyft/* source_repo/templates/lyft/
+        echo "contents of target repo after copy"
+        ls -R source_repo/templates/lyft/
+
+    - name: Commit and push changes
+      working-directory: source_repo
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add templates/lyft/
+        if git diff --staged --quiet; then
+            echo "No chages detected, Skipping push."
+        else
+            echo "Changes detected. pushing to master"
+            git commit -m "sync updated templated from comms-service"
+            git push
+        fi
